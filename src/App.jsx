@@ -4,7 +4,9 @@ function App() {
   return (
     <main className="app">
       <div className="frame">
-        <h1 className="title">my app by Chris Carella</h1>
+        <h1 className="title">
+          my app by <span className="title-name">Chris Carella</span>
+        </h1>
         <div className="accent" aria-hidden="true" />
       </div>
     </main>
