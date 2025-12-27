@@ -4,6 +4,7 @@ import './App.css'
 
 function App() {
   const [started, setStarted] = useState(false)
+  const [isDissolving, setIsDissolving] = useState(false)
   const stageRef = useRef(null)
   const animationRef = useRef(null)
   const rendererRef = useRef(null)
@@ -106,11 +107,125 @@ function App() {
     scene.add(points)
 
     let dissolveProgress = 0
+    let dissolveTarget = 1
     const clock = new THREE.Clock()
+    const behaviorTargets = new Float32Array(particleCount * 3)
+    let behaviorActive = false
+    let behaviorEndsAt = 0
+    const behaviorDuration = 2400
+
+    const applyBehavior = (behavior, center) => {
+      const bounds = getViewportBounds()
+      const size = Math.min(bounds.width, bounds.height)
+
+      if (behavior === 'swarm') {
+        for (let i = 0; i < particleCount; i += 1) {
+          const i3 = i * 3
+          const angle = Math.random() * Math.PI * 2
+          const radius = Math.random() * size * 0.18
+          behaviorTargets[i3] = center.x + Math.cos(angle) * radius
+          behaviorTargets[i3 + 1] = center.y + Math.sin(angle) * radius
+          behaviorTargets[i3 + 2] = THREE.MathUtils.randFloatSpread(120)
+        }
+      }
+
+      if (behavior === 'circle') {
+        const radius = size * 0.28
+        for (let i = 0; i < particleCount; i += 1) {
+          const i3 = i * 3
+          const angle = (i / particleCount) * Math.PI * 2
+          behaviorTargets[i3] = center.x + Math.cos(angle) * radius
+          behaviorTargets[i3 + 1] = center.y + Math.sin(angle) * radius
+          behaviorTargets[i3 + 2] = THREE.MathUtils.randFloatSpread(80)
+        }
+      }
+
+      if (behavior === 'line') {
+        const angle = Math.random() * Math.PI
+        const length = size * 0.7
+        const dx = Math.cos(angle) * length
+        const dy = Math.sin(angle) * length
+        for (let i = 0; i < particleCount; i += 1) {
+          const i3 = i * 3
+          const t = i / (particleCount - 1) - 0.5
+          behaviorTargets[i3] = center.x + dx * t
+          behaviorTargets[i3 + 1] = center.y + dy * t
+          behaviorTargets[i3 + 2] = THREE.MathUtils.randFloatSpread(60)
+        }
+      }
+
+      if (behavior === 'triangle') {
+        const radius = size * 0.28
+        const vertices = Array.from({ length: 3 }, (_, i) => {
+          const angle = (i / 3) * Math.PI * 2 - Math.PI / 2
+          return {
+            x: center.x + Math.cos(angle) * radius,
+            y: center.y + Math.sin(angle) * radius,
+          }
+        })
+        for (let i = 0; i < particleCount; i += 1) {
+          const i3 = i * 3
+          const t = i / particleCount
+          const edge = Math.floor(t * 3)
+          const edgeT = (t * 3) % 1
+          const start = vertices[edge]
+          const end = vertices[(edge + 1) % 3]
+          behaviorTargets[i3] = THREE.MathUtils.lerp(start.x, end.x, edgeT)
+          behaviorTargets[i3 + 1] = THREE.MathUtils.lerp(start.y, end.y, edgeT)
+          behaviorTargets[i3 + 2] = THREE.MathUtils.randFloatSpread(40)
+        }
+      }
+
+      behaviorActive = true
+      behaviorEndsAt = performance.now() + behaviorDuration
+    }
+
+    const screenToWorld = (x, y) => {
+      const { innerWidth, innerHeight } = window
+      const ndc = new THREE.Vector3(
+        (x / innerWidth) * 2 - 1,
+        -(y / innerHeight) * 2 + 1,
+        0.5
+      )
+      ndc.unproject(camera)
+      const direction = ndc.sub(camera.position).normalize()
+      const distance = -camera.position.z / direction.z
+      return camera.position.clone().add(direction.multiplyScalar(distance))
+    }
+
+    const triggerRandomBehavior = (event) => {
+      if (dissolveProgress < 1) {
+        return
+      }
+      const behaviors = ['swarm', 'circle', 'line', 'triangle']
+      const behavior = behaviors[Math.floor(Math.random() * behaviors.length)]
+      const position = screenToWorld(event.clientX, event.clientY)
+      applyBehavior(behavior, position)
+    }
+
+    let lastTapAt = 0
+    const handlePointerDown = (event) => {
+      const now = performance.now()
+      if (now - lastTapAt < 320) {
+        dissolveTarget = 0
+        behaviorActive = false
+        setIsDissolving(false)
+        lastTapAt = 0
+        return
+      }
+      lastTapAt = now
+      if (dissolveProgress >= 1) {
+        triggerRandomBehavior(event)
+      }
+    }
 
     const animate = () => {
       const delta = clock.getDelta()
-      dissolveProgress = Math.min(dissolveProgress + delta * 0.6, 1)
+      if (dissolveTarget === 1) {
+        dissolveProgress = Math.min(dissolveProgress + delta * 0.6, 1)
+      } else {
+        dissolveProgress = Math.max(dissolveProgress - delta * 0.7, 0)
+      }
       const ease = dissolveProgress * (2 - dissolveProgress)
 
       for (let i = 0; i < particleCount; i += 1) {
@@ -124,6 +239,10 @@ function App() {
           positions[i3 + 2] =
             initialPositions[i3 + 2] +
             (targetPositions[i3 + 2] - initialPositions[i3 + 2]) * ease
+        } else if (behaviorActive) {
+          positions[i3] += (behaviorTargets[i3] - positions[i3]) * 0.07
+          positions[i3 + 1] += (behaviorTargets[i3 + 1] - positions[i3 + 1]) * 0.07
+          positions[i3 + 2] += (behaviorTargets[i3 + 2] - positions[i3 + 2]) * 0.07
         } else {
           positions[i3] += velocities[i3]
           positions[i3 + 1] += velocities[i3 + 1]
@@ -143,6 +262,10 @@ function App() {
           if (positions[i3 + 1] > halfHeight) positions[i3 + 1] = -halfHeight
           if (positions[i3 + 1] < -halfHeight) positions[i3 + 1] = halfHeight
         }
+
+        if (behaviorActive && performance.now() > behaviorEndsAt) {
+          behaviorActive = false
+        }
       }
 
       geometry.attributes.position.needsUpdate = true
@@ -153,9 +276,11 @@ function App() {
     animationRef.current = requestAnimationFrame(animate)
 
     window.addEventListener('resize', updateViewport)
+    window.addEventListener('pointerdown', handlePointerDown, { passive: true })
 
     return () => {
       window.removeEventListener('resize', updateViewport)
+      window.removeEventListener('pointerdown', handlePointerDown)
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
       }
@@ -169,8 +294,13 @@ function App() {
     }
   }, [started])
 
+  const handleStart = () => {
+    setStarted(true)
+    setIsDissolving(true)
+  }
+
   return (
-    <main className={`app ${started ? 'is-dissolving' : ''}`}>
+    <main className={`app ${isDissolving ? 'is-dissolving' : ''}`}>
       <div className="frame">
         <h1 className="title">
           my app by <span className="title-name">Chris Carella</span>
@@ -179,7 +309,7 @@ function App() {
         <button
           className="start-button"
           type="button"
-          onClick={() => setStarted(true)}
+          onClick={handleStart}
           disabled={started}
         >
           START
