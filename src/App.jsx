@@ -10,18 +10,15 @@ function App() {
   const animationRef = useRef(null)
   const rendererRef = useRef(null)
   const audioContextRef = useRef(null)
-  const audioIntervalRef = useRef(null)
+  const masterGainRef = useRef(null)
   const hasStartedRef = useRef(false)
 
   const stopAudio = () => {
-    if (audioIntervalRef.current) {
-      clearInterval(audioIntervalRef.current)
-      audioIntervalRef.current = null
-    }
     if (audioContextRef.current) {
       audioContextRef.current.close()
       audioContextRef.current = null
     }
+    masterGainRef.current = null
   }
 
   const startAudio = () => {
@@ -34,8 +31,9 @@ function App() {
     audioContextRef.current = context
 
     const masterGain = context.createGain()
-    masterGain.gain.value = 0.12
+    masterGain.gain.value = 0.2
     masterGain.connect(context.destination)
+    masterGainRef.current = masterGain
 
     const unlockAudio = () => {
       if (context.state === 'suspended') {
@@ -49,31 +47,38 @@ function App() {
     }
 
     unlockAudio()
+  }
 
-    const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 523.25, 392]
-    let noteIndex = 0
-
-    const playNote = () => {
-      if (!audioContextRef.current) {
-        return
-      }
-      const now = context.currentTime
-      const osc = context.createOscillator()
-      const gain = context.createGain()
-      osc.type = 'square'
-      osc.frequency.value = notes[noteIndex % notes.length]
-      gain.gain.setValueAtTime(0, now)
-      gain.gain.linearRampToValueAtTime(0.15, now + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22)
-      osc.connect(gain)
-      gain.connect(masterGain)
-      osc.start(now)
-      osc.stop(now + 0.25)
-      noteIndex += 1
+  const playTapSound = () => {
+    if (!audioContextRef.current) {
+      startAudio()
+    }
+    const context = audioContextRef.current
+    const masterGain = masterGainRef.current
+    if (!context || !masterGain) {
+      return
+    }
+    if (context.state === 'suspended') {
+      context.resume()
     }
 
-    playNote()
-    audioIntervalRef.current = setInterval(playNote, 240)
+    const now = context.currentTime
+    const osc = context.createOscillator()
+    const gain = context.createGain()
+    const frequencies = [196, 220, 262, 294, 330, 392, 440, 523, 587, 659]
+    const base = frequencies[Math.floor(Math.random() * frequencies.length)]
+    const glideTarget = base * (Math.random() > 0.5 ? 1.4 : 0.7)
+
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(base, now)
+    osc.frequency.exponentialRampToValueAtTime(glideTarget, now + 0.08)
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18)
+    osc.connect(gain)
+    gain.connect(masterGain)
+    osc.start(now)
+    osc.stop(now + 0.2)
   }
 
   useEffect(() => {
@@ -298,6 +303,7 @@ function App() {
         return
       }
       lastTapAt = now
+      playTapSound()
       if (dissolveProgress >= 1) {
         randomizeColors()
         triggerRandomBehavior(event)
@@ -411,7 +417,7 @@ function App() {
   }, [started])
 
   const handleStart = () => {
-    startAudio()
+    playTapSound()
     setStarted(true)
     setIsDissolving(true)
   }
