@@ -39,6 +39,13 @@
   position: relative;
 }
 
+.title-name {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.55em;
+  letter-spacing: 0.2em;
+}
+
 .title::before,
 .title::after {
   position: absolute;
