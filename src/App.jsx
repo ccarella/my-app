@@ -13,6 +13,69 @@ function App() {
   const audioIntervalRef = useRef(null)
   const hasStartedRef = useRef(false)
 
+  const stopAudio = () => {
+    if (audioIntervalRef.current) {
+      clearInterval(audioIntervalRef.current)
+      audioIntervalRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+  }
+
+  const startAudio = () => {
+    if (audioContextRef.current) {
+      return
+    }
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext
+    const context = new AudioContext()
+    audioContextRef.current = context
+
+    const masterGain = context.createGain()
+    masterGain.gain.value = 0.12
+    masterGain.connect(context.destination)
+
+    const unlockAudio = () => {
+      if (context.state === 'suspended') {
+        context.resume()
+      }
+      const buffer = context.createBuffer(1, 1, context.sampleRate)
+      const source = context.createBufferSource()
+      source.buffer = buffer
+      source.connect(masterGain)
+      source.start(0)
+    }
+
+    unlockAudio()
+
+    const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 523.25, 392]
+    let noteIndex = 0
+
+    const playNote = () => {
+      if (!audioContextRef.current) {
+        return
+      }
+      const now = context.currentTime
+      const osc = context.createOscillator()
+      const gain = context.createGain()
+      osc.type = 'square'
+      osc.frequency.value = notes[noteIndex % notes.length]
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22)
+      osc.connect(gain)
+      gain.connect(masterGain)
+      osc.start(now)
+      osc.stop(now + 0.25)
+      noteIndex += 1
+    }
+
+    playNote()
+    audioIntervalRef.current = setInterval(playNote, 240)
+  }
+
   useEffect(() => {
     if (!started || !stageRef.current) {
       return undefined
@@ -338,63 +401,17 @@ function App() {
 
   useEffect(() => {
     if (!started) {
-      if (audioIntervalRef.current) {
-        clearInterval(audioIntervalRef.current)
-        audioIntervalRef.current = null
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close()
-        audioContextRef.current = null
-      }
+      stopAudio()
       return
     }
 
-    const AudioContext = window.AudioContext || window.webkitAudioContext
-    const context = new AudioContext()
-    audioContextRef.current = context
-
-    const masterGain = context.createGain()
-    masterGain.gain.value = 0.08
-    masterGain.connect(context.destination)
-
-    const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 523.25, 392]
-    let noteIndex = 0
-
-    const playNote = () => {
-      if (!audioContextRef.current) {
-        return
-      }
-      const now = context.currentTime
-      const osc = context.createOscillator()
-      const gain = context.createGain()
-      osc.type = 'square'
-      osc.frequency.value = notes[noteIndex % notes.length]
-      gain.gain.setValueAtTime(0, now)
-      gain.gain.linearRampToValueAtTime(0.15, now + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22)
-      osc.connect(gain)
-      gain.connect(masterGain)
-      osc.start(now)
-      osc.stop(now + 0.25)
-      noteIndex += 1
-    }
-
-    playNote()
-    audioIntervalRef.current = setInterval(playNote, 240)
-
     return () => {
-      if (audioIntervalRef.current) {
-        clearInterval(audioIntervalRef.current)
-        audioIntervalRef.current = null
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close()
-        audioContextRef.current = null
-      }
+      stopAudio()
     }
   }, [started])
 
   const handleStart = () => {
+    startAudio()
     setStarted(true)
     setIsDissolving(true)
   }
