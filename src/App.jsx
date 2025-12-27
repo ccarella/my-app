@@ -96,11 +96,27 @@ function App() {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
 
+    const colors = new Float32Array(particleCount * 3)
+    const color = new THREE.Color()
+    const randomizeColors = () => {
+      for (let i = 0; i < particleCount; i += 1) {
+        color.setHSL(Math.random(), 0.75, 0.6)
+        const i3 = i * 3
+        colors[i3] = color.r
+        colors[i3 + 1] = color.g
+        colors[i3 + 2] = color.b
+      }
+      geometry.attributes.color.needsUpdate = true
+    }
+
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    randomizeColors()
+
     const material = new THREE.PointsMaterial({
-      color: '#111111',
       size: 2.4,
       transparent: true,
       opacity: 0.9,
+      vertexColors: true,
     })
 
     const points = new THREE.Points(geometry, material)
@@ -210,11 +226,13 @@ function App() {
         dissolveTarget = 0
         behaviorActive = false
         setIsDissolving(false)
+        setStarted(false)
         lastTapAt = 0
         return
       }
       lastTapAt = now
       if (dissolveProgress >= 1) {
+        randomizeColors()
         triggerRandomBehavior(event)
       }
     }
