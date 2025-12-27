@@ -5,9 +5,13 @@ import './App.css'
 function App() {
   const [started, setStarted] = useState(false)
   const [isDissolving, setIsDissolving] = useState(false)
+  const [isStartReady, setIsStartReady] = useState(true)
   const stageRef = useRef(null)
   const animationRef = useRef(null)
   const rendererRef = useRef(null)
+  const audioContextRef = useRef(null)
+  const audioIntervalRef = useRef(null)
+  const hasStartedRef = useRef(false)
 
   useEffect(() => {
     if (!started || !stageRef.current) {
@@ -312,6 +316,84 @@ function App() {
     }
   }, [started])
 
+  useEffect(() => {
+    if (started) {
+      hasStartedRef.current = true
+      setIsStartReady(false)
+      return
+    }
+
+    if (!hasStartedRef.current) {
+      setIsStartReady(true)
+      return
+    }
+
+    setIsStartReady(false)
+    const timeout = setTimeout(() => {
+      setIsStartReady(true)
+    }, 1000)
+
+    return () => clearTimeout(timeout)
+  }, [started])
+
+  useEffect(() => {
+    if (!started) {
+      if (audioIntervalRef.current) {
+        clearInterval(audioIntervalRef.current)
+        audioIntervalRef.current = null
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+        audioContextRef.current = null
+      }
+      return
+    }
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext
+    const context = new AudioContext()
+    audioContextRef.current = context
+
+    const masterGain = context.createGain()
+    masterGain.gain.value = 0.08
+    masterGain.connect(context.destination)
+
+    const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 523.25, 392]
+    let noteIndex = 0
+
+    const playNote = () => {
+      if (!audioContextRef.current) {
+        return
+      }
+      const now = context.currentTime
+      const osc = context.createOscillator()
+      const gain = context.createGain()
+      osc.type = 'square'
+      osc.frequency.value = notes[noteIndex % notes.length]
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22)
+      osc.connect(gain)
+      gain.connect(masterGain)
+      osc.start(now)
+      osc.stop(now + 0.25)
+      noteIndex += 1
+    }
+
+    playNote()
+    audioIntervalRef.current = setInterval(playNote, 240)
+
+    return () => {
+      if (audioIntervalRef.current) {
+        clearInterval(audioIntervalRef.current)
+        audioIntervalRef.current = null
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+        audioContextRef.current = null
+      }
+    }
+  }, [started])
+
   const handleStart = () => {
     setStarted(true)
     setIsDissolving(true)
@@ -328,7 +410,7 @@ function App() {
           className="start-button"
           type="button"
           onClick={handleStart}
-          disabled={started}
+          disabled={started || !isStartReady}
         >
           START
         </button>
